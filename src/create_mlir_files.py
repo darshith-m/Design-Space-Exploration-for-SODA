@@ -22,7 +22,7 @@ class MlirFiles():
         """Function to create MLIR files"""
         linalg_line, input_shape, kernel_shape, output_shape = None, None, None, None
         if layer_name.startswith("conv2d"):
-            output_channel, input_channel = get_folded_layer_info(current_layer,
+            input_channel, output_channel = get_folded_layer_info(current_layer,
                                                                   layer_name, return_all=False)
             # Construct input, kernel, and output shapes
             input_shape = "x".join([str(current_layer.input_batch),
