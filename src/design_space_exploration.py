@@ -536,8 +536,9 @@ class DSE:
             group2 = [4, 6, 5]
             # Generate permutations for output-first configuration
             for perm1 in permutations(group1):
-                permutation = [0] + list(perm1) + list(group2)
-                self.permutations_list.append(permutation)
+                for perm2 in permutations(group2):
+                    permutation = [0] + list(perm1) + list(perm2)
+                    self.permutations_list.append(permutation)
             # Generate permutations for kernel-first configuration
             for perm2 in permutations(group2):
                 for perm1 in permutations(group1):
@@ -694,10 +695,8 @@ class DSE:
             # Get tile sizes for kernel height, specifying it's a kernel
             kernel_tiles = self.get_tile_sizes(current_layer.kernel_height, is_kernel=True)
             # Get tile sizes for input channel, considering folded input channel if available
-            if current_layer.folded_input_channel is not None:
-                input_channel_tiles = self.get_tile_sizes(current_layer.folded_input_channel)
-            else:
-                input_channel_tiles = self.get_tile_sizes(current_layer.input_channel)
+            input_channel = current_layer.folded_input_channel or current_layer.input_channel
+            input_channel_tiles = self.get_tile_sizes(input_channel)
                 # Generate tiling combinations for convolution layer
             self.generate_tiling_combinations(output_tiles, kernel_tiles, input_channel_tiles)
         # Check if the current layer is a depthwise convolution layer
@@ -707,10 +706,8 @@ class DSE:
             # Get tile sizes for kernel height, specifying it's a kernel
             kernel_tiles = self.get_tile_sizes(current_layer.kernel_height, is_kernel=True)
             # Get tile sizes for input channel, considering folded input channel if available
-            if current_layer.folded_input_channel is not None:
-                input_channel_tiles = self.get_tile_sizes(current_layer.folded_input_channel)
-            else:
-                input_channel_tiles = self.get_tile_sizes(current_layer.input_channel)
+            input_channel = current_layer.folded_input_channel or current_layer.input_channel
+            input_channel_tiles = self.get_tile_sizes(input_channel)
                 # Generate tiling combinations for depthwise convolution layer
             self.generate_tiling_combinations(output_tiles, kernel_tiles, input_channel_tiles)
         # Check if the current layer is a fully connected layer
@@ -765,10 +762,8 @@ class DSE:
             # Get unroll sizes for kernel height
             kernel_unrolls = self.get_unroll_sizes(current_layer.kernel_height)
             # Get unroll sizes for input channel, considering folded input channel if available
-            if current_layer.folded_input_channel is not None:
-                input_channel_unrolls = self.get_unroll_sizes(current_layer.folded_input_channel)
-            else:
-                input_channel_unrolls = self.get_unroll_sizes(current_layer.input_channel)
+            input_channel = current_layer.folded_input_channel or current_layer.input_channel
+            input_channel_unrolls = self.get_unroll_sizes(input_channel)
             # Generate unrolling combinations for convolution layer
             self.generate_unrolling_combinations(input_channel_unrolls,
                                                  kernel_unrolls, kernel_unrolls)
@@ -777,10 +772,8 @@ class DSE:
             # Get unroll sizes for kernel height
             kernel_unrolls = self.get_unroll_sizes(current_layer.kernel_height)
             # Get unroll sizes for input channel, considering folded input channel if available
-            if current_layer.folded_input_channel is not None:
-                input_channel_unrolls = self.get_unroll_sizes(current_layer.folded_input_channel)
-            else:
-                input_channel_unrolls = self.get_unroll_sizes(current_layer.input_channel)
+            input_channel = current_layer.folded_input_channel or current_layer.input_channel
+            input_channel_unrolls = self.get_unroll_sizes(input_channel)
             # Generate unrolling combinations for depthwise convolution layer
             self.generate_unrolling_combinations(kernel_unrolls,
                                                  kernel_unrolls, input_channel_unrolls)
@@ -799,30 +792,18 @@ class DSE:
 
     def execute(self):
         """Function to perform Design Space Exploration"""
-        if self.permute:
-            # Iterate over each layer for permutation optimization
-            for layer_name in self.layers.keys():
-                print("===========================")
-                print(f"Layer name: {layer_name}")
-                # Set the current layer name
-                self.current_layer_name = layer_name
-                # Perform permutation optimization
+        for layer_name in self.layers.keys():
+            print("===========================")
+            print(f"Layer name: {layer_name}")
+            # Set the current layer name
+            self.current_layer_name = layer_name
+            # Perform permutation optimization if required
+            if self.permute:
                 self.perform_permutation()
-        elif self.tile:
-            # Iterate over each layer for tiling optimization
-            for layer_name in self.layers.keys():
-                print("===========================")
-                print(f"Layer name: {layer_name}")
-                # Set the current layer name
-                self.current_layer_name = layer_name
-                # Perform tiling optimization
+            # Perform tiling optimization if required
+            if self.tile:
                 self.perform_tiling()
-        elif self.unroll:
-            # Iterate over each layer for unrolling optimization
-            for layer_name in self.layers.keys():
-                print("===========================")
-                print(f"Layer name: {layer_name}")
-                # Set the current layer name
-                self.current_layer_name = layer_name
-                # Perform unrolling optimization
+            # Perform unrolling optimization if required
+            if self.unroll:
                 self.perform_unrolling()
+
