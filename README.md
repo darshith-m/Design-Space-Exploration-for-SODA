@@ -98,11 +98,13 @@ docker pull agostini01/soda
 <img src="./images/Fig2-DSE_flow.png" alt="DSE flow" width="600">
 
 1. **Input File**: Start with an MLIR file containing all neural network layers at the Linalg level. This file serves as the input for exploration.
-2. **Argument Parsing**: Select the layer type (e.g., Conv2D, Depthwise Conv2D, FC) and loop optimizations (permutation, tiling, unrolling). Optionally, specify layers to start or end exploration. See options in Table below
+2. **Argument Parsing**: Select the layer type (e.g., Conv2D, Depthwise Conv2D, FC) and loop optimizations (permutation, tiling, unrolling). Optionally, specify layers to start or end exploration. See options in the table below.
 3. **Read MLIR File**: The tool reads and stores essential information about each layer and prepares them for further modifications.
 4. **Create Temporary MLIR Files**: Temporary files with modified dimensions are created, marked with SODA syntax to designate the layer as accelerated, enabling ASIC generation.
 5. **Design Space Exploration (DSE)**: Generate loop optimization combinations for each layer and run SODA, Bambu (HLS), and OpenRoad (synthesis and placement). Record metrics like power, performance, area, efficiency, and energy.
 6. **Output File**: Save exploration results in a CSV file.
+
+For additional resources and detailed explanations, please refer to the [docs](./docs) folder.
 
 ### a. Refined SODA Pipeline for Bambu
 
@@ -114,12 +116,12 @@ docker pull agostini01/soda
 
 ### b. HLS Configurations
 
-| Configuration            | Values                                    | Remarks                                                                                         |
-| ------------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Maximum clock cycles     | (2**`<sup>`**32** `</sup>`**)-1 | Accommodates maximum allowable number of clock cycles by Bambu’s testbench.                    |
-| Frequency                | 100 MHz                                   | No timing violations are observed at this frequency.                                            |
-| Memory allocation policy | NO_BRAM                                   | Memory modules should not be synthesized. Memory modules are usually placed as macros in ASICs. |
-| PDK                      | NanGate45                                 | NanGate45 is a commonly used open-source PDK for 45nm technology.                               |
+| Configuration            | Values    | Remarks                                                                                         |
+| ------------------------ | --------- | ----------------------------------------------------------------------------------------------- |
+| Maximum clock cycles     | (2^32)-1  | Accommodates maximum allowable number of clock cycles by Bambu’s testbench.                    |
+| Frequency                | 100 MHz   | No timing violations are observed at this frequency.                                            |
+| Memory allocation policy | NO_BRAM   | Memory modules should not be synthesized. Memory modules are usually placed as macros in ASICs. |
+| PDK                      | NanGate45 | NanGate45 is a commonly used open-source PDK for 45nm technology.                               |
 
 ### c. DSE Framework passes
 
