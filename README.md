@@ -24,7 +24,7 @@ Results demonstrate that hardware design for large neural networks can be signif
 6. **Bambu HLS**: Use Bambu HLS to translate LLVM code to Verilog for hardware synthesis.
 7. **OpenROAD**: Employ OpenROAD to generate a GDSII file from the Verilog, ready for ASIC manufacturing.
 
-### GitHub 
+### GitHub
 
 [PNNL SODA-OPT GitHub Repository](https://github.com/pnnl/soda-opt/)
 
@@ -98,11 +98,13 @@ docker pull agostini01/soda
 <img src="./images/Fig2-DSE_flow.png" alt="DSE flow" width="600">
 
 1. **Input File**: Start with an MLIR file containing all neural network layers at the Linalg level. This file serves as the input for exploration.
-2. **Argument Parsing**: Select the layer type (e.g., Conv2D, Depthwise Conv2D, FC) and loop optimizations (permutation, tiling, unrolling). Optionally, specify layers to start or end exploration. See options in Table below
+2. **Argument Parsing**: Select the layer type (e.g., Conv2D, Depthwise Conv2D, FC) and loop optimizations (permutation, tiling, unrolling). Optionally, specify layers to start or end exploration. See options in the table below.
 3. **Read MLIR File**: The tool reads and stores essential information about each layer and prepares them for further modifications.
 4. **Create Temporary MLIR Files**: Temporary files with modified dimensions are created, marked with SODA syntax to designate the layer as accelerated, enabling ASIC generation.
 5. **Design Space Exploration (DSE)**: Generate loop optimization combinations for each layer and run SODA, Bambu (HLS), and OpenRoad (synthesis and placement). Record metrics like power, performance, area, efficiency, and energy.
 6. **Output File**: Save exploration results in a CSV file.
+
+For additional resources and detailed explanations, please refer to the [docs](./docs) folder.
 
 ### a. Refined SODA Pipeline for Bambu
 
@@ -112,7 +114,16 @@ docker pull agostini01/soda
 - **Affine Data Copy Generation after Unrolling**: Run data copy optimization after unrolling to prevent unnecessary buffer expansion and to avoid generation large number of flip-flops at HLS stage.
 - **Loop Optimization Order: Permutation, Tiling, then Unrolling**: Begin with permutation followed by tiling . Performing tiling as the first step significantly increases the number of possible permutations, leading to greater complexity and potentially inefficient exploration.
 
-### b. DSE Framework passes
+### b. HLS Configurations
+
+| Configuration            | Values    | Remarks                                                                                         |
+| ------------------------ | --------- | ----------------------------------------------------------------------------------------------- |
+| Maximum clock cycles     | (2^32)-1  | Accommodates maximum allowable number of clock cycles by Bambu’s testbench.                    |
+| Frequency                | 100 MHz   | No timing violations are observed at this frequency.                                            |
+| Memory allocation policy | NO_BRAM   | Memory modules should not be synthesized. Memory modules are usually placed as macros in ASICs. |
+| PDK                      | NanGate45 | NanGate45 is a commonly used open-source PDK for 45nm technology.                               |
+
+### c. DSE Framework passes
 
 | Type                        | Parameters             | Remarks                                              |
 | --------------------------- | ---------------------- | ---------------------------------------------------- |
@@ -127,7 +138,7 @@ docker pull agostini01/soda
 |                             | `--end_layer`        | (Optional) Select layer no. to end exploring at.     |
 |                             | `--select_layer`     | (Optional) Select a particular layer to explore.     |
 
-### c. Commands to execute
+### d. Commands to execute
 
 This workflow guides you through converting a Python-based neural network model to MLIR format and running the DSE framework on it.
 
@@ -189,7 +200,6 @@ Use this command to apply loop unrolling optimization on Conv2D layers in [lenet
 
 python3 src/main.py --read_mlir ./models/lenet.mlir --conv2d --unroll
 
-
 ##### 2. Types of layers
 
 a.  Convolution layer
@@ -209,7 +219,6 @@ python3 src/main.py --read_mlir ./models/mobilenetv3_small.mlir --depthwise_conv
 Use this command to apply loop permutation on Fully Connected layers (MatMul) in [lenet.mlir](./models/lenet.mlir):
 
 python3 src/main.py --read_mlir ./models/lenet.mlir --matmul --permute
-
 
 ##### 3. Selecting layers to explore
 
@@ -237,8 +246,7 @@ Use this command to explore only layer 2 of Conv2D layers in [lenet.mlir](./mode
 
 python3 src/main.py --read_mlir ./models/lenet.mlir --conv2D --select_layer 2
 
-
-### d. Intermediate files and Results
+### e. Intermediate files and Results
 
 #### Intermediate files
 
