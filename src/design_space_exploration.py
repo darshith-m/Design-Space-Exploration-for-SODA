@@ -19,7 +19,7 @@ class DSE:
         self.permute = args.permute # Perform loop permutation if True
         self.tile = args.tile   # Perform loop tiling if True
         self.unroll = args.unroll   # Perform loop permutation if True
-
+        self.performance_oriented_exploration = 1 if args.performance else 0 # (1 = performence oriented; 0 = energy oriented)
         self.commands = None    # Current set of docker commands to execute
         self.current_configuration = None # Current configuration of loop optimization executed
         self.current_layer_name = None  # Current layer being explored
@@ -858,7 +858,7 @@ class DSE:
                     'O': current_layer.output_channel,
                     'S': current_layer.strides,
                     'D': current_layer.dilations,
-                    'P': 1,  # Default padding value
+                    'P': self.performance_oriented_explore,
                     'DW': 1 if self.current_layer_name.startswith("depthwise_conv2d") else 0
                 }
                 
@@ -870,7 +870,8 @@ class DSE:
                     'B': current_layer.input_batch,
                     'M': current_layer.input_height,
                     'K': current_layer.input_width,
-                    'N': current_layer.weight_width  # Output dimension
+                    'N': current_layer.weight_width,
+                    'P': self.performance_oriented_explore,
                 }
                 
                 # Prepare input for prediction (adjust as needed based on fc model features)
@@ -958,7 +959,7 @@ class DSE:
                     'O': current_layer.output_channel,
                     'S': current_layer.strides,
                     'D': current_layer.dilations,
-                    'P': 1,  # Default padding value
+                    'P': self.performance_oriented_explore,
                     'DW': 1 if self.current_layer_name.startswith("depthwise_conv2d") else 0
                 }
                 
@@ -1013,7 +1014,8 @@ class DSE:
                     'B': current_layer.input_batch,
                     'M': current_layer.input_height,
                     'K': current_layer.input_width,
-                    'N': current_layer.weight_width
+                    'N': current_layer.weight_width,
+                    'P': self.performance_oriented_explore
                 }
                 
                 # Prepare input for prediction
@@ -1102,7 +1104,7 @@ class DSE:
                     'O': current_layer.output_channel,
                     'S': current_layer.strides,
                     'D': current_layer.dilations,
-                    'P': 1,  # Default padding value
+                    'P': self.performance_oriented_explore,
                     'DW': 1 if self.current_layer_name.startswith("depthwise_conv2d") else 0
                 }
                 
@@ -1145,7 +1147,8 @@ class DSE:
                     'B': current_layer.input_batch,
                     'M': current_layer.input_height,
                     'K': current_layer.input_width,
-                    'N': current_layer.weight_width
+                    'N': current_layer.weight_width,
+                    'P': self.performance_oriented_explore
                 }
                 
                 # Prepare input for prediction

@@ -125,18 +125,21 @@ For additional resources and detailed explanations, please refer to the [docs](.
 
 ### c. DSE Framework passes
 
-| Type                        | Parameters             | Remarks                                              |
-| --------------------------- | ---------------------- | ---------------------------------------------------- |
-| **MLIR**              | `--read_mlir`        | Read Neural Network MLIR file (E.g. Resnet-18).      |
-| **Loop optimization** | `--permute`          | Performs loop permutation.                           |
-|                             | `--tile`             | Performs loop tiling.                                |
-|                             | `--unroll`           | Performs loop unrolling.                             |
-| **Type of NN layer**  | `--conv2d`           | (Optional) Explores 2D Convolution layers.           |
-|                             | `--depthwise_conv2d` | (Optional) 2D Depth-wise Convolution layers.        |
-|                             | `--matmul`           | (Optional) Explores Fully Connected layers.          |
-| **Layer options**     | `--start_layer`      | (Optional) Select layer no. to start exploring from. |
-|                             | `--end_layer`        | (Optional) Select layer no. to end exploring at.     |
-|                             | `--select_layer`     | (Optional) Select a particular layer to explore.     |
+| Type                     | Parameters            | Remarks                                                            |
+|--------------------------|----------------------|-------------------------------------------------------------------|
+| **MLIR**                 | `--read_mlir`        | Read Neural Network MLIR file (E.g. Resnet-18).                    |
+| **Exploration type**     | `--dse`              | Performs exhaustive Design Space Exploration.                       |
+|                          | `--decision_tree`    | Performs Decision Tree based DSE.                                   |
+|                          | `--performance`      | (With --decision_tree) Use performance-oriented predictions; otherwise energy-oriented predictions are done. |
+| **Loop optimization**    | `--permute`          | Performs loop permutation.                                          |
+|                          | `--tile`             | Performs loop tiling.                                               |
+|                          | `--unroll`           | Performs loop unrolling.                                            |
+| **Type of NN layer**     | `--conv2d`           | (Optional) Explores 2D Convolution layers.                          |
+|                          | `--depthwise_conv2d` | (Optional) 2D Depth-wise Convolution layers.                        |
+|                          | `--matmul`           | (Optional) Explores Fully Connected layers.                         |
+| **Layer options**        | `--start_layer`      | (Optional) Select layer no. to start exploring from.                |
+|                          | `--end_layer`        | (Optional) Select layer no. to end exploring at.                    |
+|                          | `--select_layer`     | (Optional) Select a particular layer to explore.                    |
 
 ### d. Commands to execute
 
