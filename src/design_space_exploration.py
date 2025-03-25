@@ -6,6 +6,8 @@ import subprocess
 from itertools import permutations
 from utilities import get_layer_info, get_folded_layer_info
 import numpy as np
+import warnings
+warnings.filterwarnings('ignore')
 
 class DSE:
     """"Design Space Exploration class"""
@@ -17,7 +19,7 @@ class DSE:
         self.permute = args.permute # Perform loop permutation if True
         self.tile = args.tile   # Perform loop tiling if True
         self.unroll = args.unroll   # Perform loop permutation if True
-
+        self.performance_oriented_exploration = 1 if args.performance else 0 # (1 = performence oriented; 0 = energy oriented)
         self.commands = None    # Current set of docker commands to execute
         self.current_configuration = None # Current configuration of loop optimization executed
         self.current_layer_name = None  # Current layer being explored
@@ -790,7 +792,7 @@ class DSE:
         # Execute Docker commands for the current unrolling configuration
         self.docker_commands()
 
-    def execute(self):
+    def execute_dse(self):
         """Function to perform Design Space Exploration"""
         for layer_name in self.layers.keys():
             print("===========================")
@@ -806,4 +808,485 @@ class DSE:
             # Perform unrolling optimization if required
             if self.unroll:
                 self.perform_unrolling()
+    
+    def perform_opt_permutation(self):
+        """Function to perform loop permutation optimization using decision trees"""
+        # Import necessary modules
+        import pickle
+        import os
+        
+        print("Performing decision tree-based permutation optimization...")
+        
+        # Load the permutation optimizer model based on layer type
+        model_dir = 'models'
+        
+        # Determine model paths based on layer type
+        if self.current_layer_name.startswith("conv2d") or self.current_layer_name.startswith("depthwise_conv2d"):
+            # Use conv2d models from ./decision_tree_models directory
+            permutation_model_path = os.path.join('./decision_tree_models', "conv2d_permutation_model.pkl")
+            permutation_scaler_path = os.path.join('./decision_tree_models', "conv2d_permutation_scaler.pkl")
+            perm_encoder_path = os.path.join('./decision_tree_models', "conv2d_perm_encoder.pkl")
+        elif self.current_layer_name.startswith("matmul"):
+            # Use fc (fully connected) models from models directory
+            permutation_model_path = os.path.join('./decision_tree_models', "fc_permutation_model.pkl")
+            permutation_scaler_path = os.path.join('./decision_tree_models', "fc_permutation_scaler.pkl")
+            perm_encoder_path = os.path.join('./decision_tree_models', "fc_perm_encoder.pkl")
+        else:
+            print(f"Unsupported layer type for optimization: {self.current_layer_name}")
+            return
+        
+        try:
+            # Load model, scaler and encoder
+            with open(permutation_model_path, 'rb') as f:
+                permutation_model = pickle.load(f)
+            
+            with open(permutation_scaler_path, 'rb') as f:
+                permutation_scaler = pickle.load(f)
+                
+            with open(perm_encoder_path, 'rb') as f:
+                perm_encoder = pickle.load(f)
+                
+            # Get the current layer being processed
+            current_layer = self.layers[self.current_layer_name]
+            
+            # Extract features for prediction (handle both conv2d and matmul layers)
+            if self.current_layer_name.startswith("conv2d") or self.current_layer_name.startswith("depthwise_conv2d"):
+                features = {
+                    'I': current_layer.input_height,
+                    'K': current_layer.kernel_height,
+                    'IC': current_layer.input_channel,
+                    'O': current_layer.output_channel,
+                    'S': current_layer.strides,
+                    'D': current_layer.dilations,
+                    'P': self.performance_oriented_explore,
+                    'DW': 1 if self.current_layer_name.startswith("depthwise_conv2d") else 0
+                }
+                
+                # Prepare input for prediction
+                X = [[features['I'], features['K'], features['IC'], features['O'], 
+                    features['S'], features['D'], features['P'], features['DW']]]
+            elif self.current_layer_name.startswith("matmul"):
+                features = {
+                    'B': current_layer.input_batch,
+                    'M': current_layer.input_height,
+                    'K': current_layer.input_width,
+                    'N': current_layer.weight_width,
+                    'P': self.performance_oriented_explore,
+                }
+                
+                # Prepare input for prediction (adjust as needed based on fc model features)
+                X = [[features['B'], features['M'], features['K'], features['N']]]
+            
+            # Scale the features
+            X_scaled = permutation_scaler.transform(X)
+            
+            # Make prediction
+            perm_class = permutation_model.predict(X_scaled)[0]
+            perm_sequence = perm_encoder.inverse_transform([perm_class])[0]
+            
+            # Handle potential different formats for permutation sequences
+            if isinstance(perm_sequence, str) and '_' in perm_sequence:
+                perm_list = [int(x) for x in perm_sequence.split('_')]
+            elif isinstance(perm_sequence, str):
+                perm_list = [int(x) for x in perm_sequence.split(',')]
+            else:
+                perm_list = [int(x) for x in perm_sequence]
+            
+            print(f"Predicted optimal permutation: {perm_list}")
+            
+            # Set the current permutation for execution
+            self.current_permutation = ','.join(map(str, perm_list))
+            
+            # Set the configuration name
+            self.current_configuration = f"{self.model_name}_dt_permute_{self.current_layer_name}_{''.join(map(str, perm_list))}"
+            
+            print(f"Configuration: {self.current_configuration}")
+            print(f"Current permutation: {self.current_permutation}")
+            
+            # Create and execute Docker commands
+            self.create_docker_commands()
+            self.execute_commands()
+            
+        except FileNotFoundError as e:
+            print(f"Error: Required model files not found - {e}")
+            print("Make sure the decision tree models have been trained and saved.")
+        except Exception as e:
+            print(f"Error during permutation optimization: {e}")
 
+    def perform_opt_tiling(self):
+        """Function to perform loop tiling optimization using decision trees"""
+        # Import necessary modules
+        import pickle
+        import os
+        
+        print("Performing decision tree-based tiling optimization...")
+        
+        # Determine model paths based on layer type
+        if self.current_layer_name.startswith("conv2d") or self.current_layer_name.startswith("depthwise_conv2d"):
+            # Use conv2d models from ./decision_tree_models directory
+            tiling_ot_model_path = os.path.join('./decision_tree_models', "conv2d_tiling_O_T_model.pkl")
+            tiling_ict_model_path = os.path.join('./decision_tree_models', "conv2d_tiling_IC_T_model.pkl")
+            tiling_scaler_path = os.path.join('./decision_tree_models', "conv2d_tiling_scaler.pkl")
+        elif self.current_layer_name.startswith("matmul"):
+            # Use fc models from models directory
+            tiling_k_model_path = os.path.join('./decision_tree_models', "fc_tile_k_model.pkl")
+            tiling_n_model_path = os.path.join('./decision_tree_models', "fc_tile_n_model.pkl")
+            tiling_scaler_path = os.path.join('./decision_tree_models', "fc_tile_scaler.pkl")
+        else:
+            print(f"Unsupported layer type for optimization: {self.current_layer_name}")
+            return
+        
+        try:
+            # Get the current layer being processed
+            current_layer = self.layers[self.current_layer_name]
+            
+            if self.current_layer_name.startswith("conv2d") or self.current_layer_name.startswith("depthwise_conv2d"):
+                # Load models and scaler for conv2d
+                with open(tiling_ot_model_path, 'rb') as f:
+                    tiling_ot_model = pickle.load(f)
+                
+                with open(tiling_ict_model_path, 'rb') as f:
+                    tiling_ict_model = pickle.load(f)
+                    
+                with open(tiling_scaler_path, 'rb') as f:
+                    tiling_scaler = pickle.load(f)
+                
+                # Extract features for prediction
+                features = {
+                    'I': current_layer.input_height,
+                    'K': current_layer.kernel_height,
+                    'IC': current_layer.input_channel,
+                    'O': current_layer.output_channel,
+                    'S': current_layer.strides,
+                    'D': current_layer.dilations,
+                    'P': self.performance_oriented_explore,
+                    'DW': 1 if self.current_layer_name.startswith("depthwise_conv2d") else 0
+                }
+                
+                # Prepare input for prediction
+                X = [[features['I'], features['K'], features['IC'], features['O'], 
+                    features['S'], features['D'], features['P'], features['DW']]]
+                
+                # Scale the features
+                X_scaled = tiling_scaler.transform(X)
+                
+                # Make predictions
+                o_t_value = tiling_ot_model.predict(X_scaled)[0]
+                ic_t_value = tiling_ict_model.predict(X_scaled)[0]
+                
+                # Convert numpy integers to Python integers
+                o_t_value = int(o_t_value)
+                ic_t_value = int(ic_t_value)
+
+                if o_t_value == 0:
+                    o_t_value = current_layer.output_height
+                if ic_t_value == 0:
+                    ic_t_value = current_layer.input_channel
+                
+                print(f"Predicted optimal O_T value: {o_t_value}")
+                print(f"Predicted optimal IC_T value: {ic_t_value}")
+                
+                # Build tiling combination
+                # [output_batch, output_width, output_height, output_channel, kernel_width, kernel_height, input_channel]
+                tiling_combination = [
+                    int(current_layer.output_batch),
+                    min(o_t_value, int(current_layer.output_width)), 
+                    min(o_t_value, int(current_layer.output_height)),
+                    int(current_layer.folded_output_channel),
+                    int(current_layer.kernel_height),
+                    int(current_layer.kernel_width),
+                    min(ic_t_value, int(current_layer.input_channel))
+                ]
+                
+            elif self.current_layer_name.startswith("matmul"):
+                # Load models and scaler for matmul
+                with open(tiling_k_model_path, 'rb') as f:
+                    tiling_k_model = pickle.load(f)
+                
+                with open(tiling_n_model_path, 'rb') as f:
+                    tiling_n_model = pickle.load(f)
+                    
+                with open(tiling_scaler_path, 'rb') as f:
+                    tiling_scaler = pickle.load(f)
+                
+                # Extract features for prediction
+                features = {
+                    'B': current_layer.input_batch,
+                    'M': current_layer.input_height,
+                    'K': current_layer.input_width,
+                    'N': current_layer.weight_width,
+                    'P': self.performance_oriented_explore
+                }
+                
+                # Prepare input for prediction
+                X = [[features['B'], features['M'], features['K'], features['N']]]
+                
+                # Scale the features
+                X_scaled = tiling_scaler.transform(X)
+                
+                # Make predictions and convert to Python integers
+                k_value = int(tiling_k_model.predict(X_scaled)[0])
+                n_value = int(tiling_n_model.predict(X_scaled)[0])
+                
+                print(f"Predicted optimal K tile value: {k_value}")
+                print(f"Predicted optimal N tile value: {n_value}")
+                
+                # Build tiling combination for matmul
+                # [output_batch, output_width, output_height, kernel_width]
+                tiling_combination = [
+                    int(current_layer.output_batch),
+                    n_value, 
+                    int(current_layer.output_height),
+                    k_value
+                ]
+            
+            # Set the current tiling combination for execution
+            self.current_tiling_combination = tiling_combination
+            
+            # Set the configuration name
+            self.current_configuration = f"{self.model_name}_dt_tile_{self.current_layer_name}_{''.join(map(str, tiling_combination))}"
+            
+            print(f"Configuration: {self.current_configuration}")
+            print(f"Current tiling combination: {self.current_tiling_combination}")
+            
+            # Create and execute Docker commands
+            self.create_docker_commands()
+            self.execute_commands()
+        
+        except FileNotFoundError as e:
+            print(f"Error: Required model files not found - {e}")
+            print("Make sure the decision tree models have been trained and saved.")
+        except Exception as e:
+            print(f"Error during tiling optimization: {e}")
+
+    def perform_opt_unrolling(self):
+        """Function to perform loop unrolling optimization using decision trees"""
+        # Import necessary modules
+        import pickle
+        import os
+        
+        print("Performing decision tree-based unrolling optimization...")
+        
+        # Determine model paths based on layer type
+        if self.current_layer_name.startswith("conv2d") or self.current_layer_name.startswith("depthwise_conv2d"):
+            # Use conv2d models from ./decision_tree_models directory
+            unrolling_u_model_path = os.path.join('./decision_tree_models', "conv2d_unrolling_U_model.pkl")
+            unrolling_f_model_path = os.path.join('./decision_tree_models', "conv2d_unrolling_F_model.pkl")
+            unrolling_scaler_path = os.path.join('./decision_tree_models', "conv2d_unrolling_scaler.pkl")
+        elif self.current_layer_name.startswith("matmul"):
+            # Use fc models from models directory
+            unrolling_u_model_path = os.path.join('./decision_tree_models', "fc_unroll_model.pkl")
+            unrolling_scaler_path = os.path.join('./decision_tree_models', "fc_unroll_scaler.pkl")
+        else:
+            print(f"Unsupported layer type for optimization: {self.current_layer_name}")
+            return
+        
+        try:
+            # Get the current layer being processed
+            current_layer = self.layers[self.current_layer_name]
+            
+            if self.current_layer_name.startswith("conv2d") or self.current_layer_name.startswith("depthwise_conv2d"):
+                # Load models and scaler for conv2d
+                with open(unrolling_u_model_path, 'rb') as f:
+                    unrolling_u_model = pickle.load(f)
+                
+                with open(unrolling_f_model_path, 'rb') as f:
+                    unrolling_f_model = pickle.load(f)
+                    
+                with open(unrolling_scaler_path, 'rb') as f:
+                    unrolling_scaler = pickle.load(f)
+
+                # Extract features for prediction
+                features = {
+                    'I': current_layer.input_height,
+                    'K': current_layer.kernel_height,
+                    'IC_U': current_layer.folded_input_channel,  # Use folded or estimate
+                    'O': current_layer.output_channel,
+                    'S': current_layer.strides,
+                    'D': current_layer.dilations,
+                    'P': self.performance_oriented_explore,
+                    'DW': 1 if self.current_layer_name.startswith("depthwise_conv2d") else 0
+                }
+                
+                # Prepare input for prediction
+                X = [[features['I'], features['K'], features['IC_U'], features['O'], 
+                    features['S'], features['D'], features['P'], features['DW']]]
+                
+                # Scale the features
+                X_scaled = unrolling_scaler.transform(X)
+                
+                # Make predictions
+                u_value = unrolling_u_model.predict(X_scaled)[0]  # Number of full unrolls
+                f_value = unrolling_f_model.predict(X_scaled)[0]  # Unroll factor (for partial unroll)
+
+                # Make predictions
+                u_prediction = unrolling_u_model.predict(X_scaled)
+                u_value = u_prediction[0] if isinstance(u_prediction, (list, np.ndarray)) else u_prediction
+
+                f_prediction = unrolling_f_model.predict(X_scaled)
+                f_value = f_prediction[0] if isinstance(f_prediction, (list, np.ndarray)) else f_prediction
+
+                print(f"Prediction type: {type(u_value)}")
+                print(f"Prediction type: {type(f_value)}")
+                print(f"Predicted optimal unroll count (U): {u_value}")
+                print(f"Predicted optimal unroll factor (F): {f_value}")
+                
+                # Build unrolling combination [unroll_full, unroll_factor]
+                unroll_combination = [u_value, f_value]
+                
+            elif self.current_layer_name.startswith("matmul"):
+                # Load models and scaler for matmul
+                with open(unrolling_u_model_path, 'rb') as f:
+                    unrolling_u_model = pickle.load(f)
+                    
+                with open(unrolling_scaler_path, 'rb') as f:
+                    unrolling_scaler = pickle.load(f)
+                
+                # Extract features for prediction
+                features = {
+                    'B': current_layer.input_batch,
+                    'M': current_layer.input_height,
+                    'K': current_layer.input_width,
+                    'N': current_layer.weight_width,
+                    'P': self.performance_oriented_explore
+                }
+                
+                # Prepare input for prediction
+                X = [[features['B'], features['M'], features['K'], features['N']]]
+                
+                # Scale the features
+                X_scaled = unrolling_scaler.transform(X)
+                
+                # Make predictions - for FC layers, the model may predict only unroll count
+                u_value = unrolling_u_model.predict(X_scaled)[0]  # Unroll factor or unroll strategy
+                
+                print(f"Prediction type: {type(u_value)}")
+                print(f"Predicted optimal unroll value: {u_value}")
+                
+                # For FC/matmul layers, we might use a different format for unrolling
+                # Assuming the model predicts an unroll factor, with full unroll = 1
+                unroll_combination = [1, u_value]  # [unroll_full=1, unroll_factor=u_value]
+                
+                # If the model predicts 0, it means full unroll
+                if u_value == 0:
+                    unroll_combination = [1, 0]  # Full unroll once
+            
+            # Set the current unrolling combination for execution
+            self.current_unroll_combination = unroll_combination
+            
+            # Set the configuration name
+            self.current_configuration = f"{self.model_name}_dt_unroll_{self.current_layer_name}_unroll_{unroll_combination[0]}_factor_{unroll_combination[1]}"
+            
+            print(f"Configuration: {self.current_configuration}")
+            print(f"Current unroll combination: {self.current_unroll_combination}")
+            
+            # Create and execute Docker commands
+            self.create_docker_commands()
+            self.execute_commands()
+            
+        except FileNotFoundError as e:
+            print(f"Error: Required model files not found - {e}")
+            print("Make sure the decision tree models have been trained and saved.")
+        except Exception as e:
+            print(f"Error during unrolling optimization: {e}")
+
+    def check_available_models(self):
+        """Check which model files are available and report to the user"""
+        import os
+        
+        model_status = {
+            'conv2d': {
+                'permutation': False,
+                'tiling': False,
+                'unrolling': False
+            },
+            'fc': {
+                'permutation': False,
+                'tiling': False,
+                'unrolling': False
+            }
+        }
+        
+        # Check conv2d models (in ./decision_tree_models directory)
+        if os.path.exists(os.path.join('./decision_tree_models', "conv2d_permutation_model.pkl")):
+            model_status['conv2d']['permutation'] = True
+        
+        if (os.path.exists(os.path.join('./decision_tree_models', "conv2d_tiling_O_T_model.pkl")) and 
+            os.path.exists(os.path.join('./decision_tree_models', "conv2d_tiling_IC_T_model.pkl"))):
+            model_status['conv2d']['tiling'] = True
+        
+        if (os.path.exists(os.path.join('./decision_tree_models', "conv2d_unrolling_U_model.pkl")) and 
+            os.path.exists(os.path.join('./decision_tree_models', "conv2d_unrolling_F_model.pkl"))):
+            model_status['conv2d']['unrolling'] = True
+        
+        # Check fc/matmul models (in models directory)
+        if os.path.exists(os.path.join('./decision_tree_models', "fc_permutation_model.pkl")):
+            model_status['fc']['permutation'] = True
+        
+        if (os.path.exists(os.path.join('./decision_tree_models', "fc_tile_k_model.pkl")) and 
+            os.path.exists(os.path.join('./decision_tree_models', "fc_tile_n_model.pkl"))):
+            model_status['fc']['tiling'] = True
+        
+        if os.path.exists(os.path.join('./decision_tree_models', "fc_unroll_model.pkl")):
+            model_status['fc']['unrolling'] = True
+        
+        # Print model availability
+        print("\n=== Available Models for Optimization ===")
+        print("Conv2D Models:")
+        print(f"  - Permutation: {'Available' if model_status['conv2d']['permutation'] else 'Not available'}")
+        print(f"  - Tiling: {'Available' if model_status['conv2d']['tiling'] else 'Not available'}")
+        print(f"  - Unrolling: {'Available' if model_status['conv2d']['unrolling'] else 'Not available'}")
+        
+        print("\nFully Connected (MatMul) Models:")
+        print(f"  - Permutation: {'Available' if model_status['fc']['permutation'] else 'Not available'}")
+        print(f"  - Tiling: {'Available' if model_status['fc']['tiling'] else 'Not available'}")
+        print(f"  - Unrolling: {'Available' if model_status['fc']['unrolling'] else 'Not available'}")
+        print("=========================================\n")
+        
+        return model_status
+
+    def execute_decision_tree(self):
+        """Function to perform Decision Tree Optimization"""
+        # Check available models
+        model_status = self.check_available_models()
+        
+        # Process each layer
+        for layer_name in self.layers.keys():
+            print("===========================")
+            print(f"Layer name: {layer_name}")
+            # Set the current layer name
+            self.current_layer_name = layer_name
+            
+            # Determine layer type
+            layer_type = None
+            if layer_name.startswith("conv2d") or layer_name.startswith("depthwise_conv2d"):
+                layer_type = 'conv2d'
+            elif layer_name.startswith("matmul"):
+                layer_type = 'fc'
+            else:
+                print(f"Skipping layer {layer_name}: unsupported layer type for decision tree optimization")
+                continue
+            
+            # Perform optimizations based on available models and optimization flags
+            if self.permute:
+                if model_status[layer_type]['permutation']:
+                    print(f"Applying decision tree permutation optimization for {layer_name}...")
+                    self.perform_opt_permutation()
+                else:
+                    print(f"Skipping permutation optimization for {layer_name}: models not available")
+            
+            if self.tile:
+                if model_status[layer_type]['tiling']:
+                    print(f"Applying decision tree tiling optimization for {layer_name}...")
+                    self.perform_opt_tiling()
+                else:
+                    print(f"Skipping tiling optimization for {layer_name}: models not available")
+            
+            if self.unroll:
+                if model_status[layer_type]['unrolling']:
+                    print(f"Applying decision tree unrolling optimization for {layer_name}...")
+                    self.perform_opt_unrolling()
+                else:
+                    print(f"Skipping unrolling optimization for {layer_name}: models not available")
+            
+            print(f"Completed optimization for layer: {layer_name}")
