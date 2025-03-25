@@ -76,8 +76,13 @@ def main():
             print("\n\n**************************************************\n")
             print("4. Design Space Exploration")
 
-            # Perform design space exploration on the layers
-            layers = DSE(args, layers).execute()
+            if args.dse:
+                # Perform design space exploration on the layers
+                layers = DSE(args, layers).execute_dse()           
+            elif args.decision_tree:
+                print("Decision Tree")
+                # Perform decision tree analysis on the layers
+                layers = DSE(args, layers).execute_decision_tree()
 
         else:
             print("MLIR file doesn't exist!")
