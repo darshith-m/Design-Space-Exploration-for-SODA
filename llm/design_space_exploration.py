@@ -437,7 +437,7 @@ class DSE:
                         # Record the results in a CSV file
                         self.record_results(simulation_cycles, total_power, available_area)
                         # Path to the output folder
-                        output_folder = './output_llm'
+                        output_folder = './output'
                         # Command to delete files and folders of current configuration
                         command = f"find {output_folder} -name \
                             '*{self.current_configuration}*' -exec rm -rf {{}} +"
@@ -458,7 +458,7 @@ class DSE:
                     # Initialize cycles variable
                     cycles = ""
                     # Read the Bambu log file to extract the average execution cycles
-                    for runtime in open(f'output/{self.current_configuration}/bambu-log',
+                    for runtime in open(f'./output/{self.current_configuration}/bambu-log',
                                             encoding='utf-8').readlines():
                         if "Average execution" in runtime:
                             # Extract the first integer from the line
@@ -470,7 +470,7 @@ class DSE:
                 elif key == "3-openroad":
                     # Define the path to the OpenROAD log file
                     log_path_suffix = 'HLS_output/Synthesis/bash_flow/openroad/logs/nangate45/main_kernel/base/6_report.log'
-                    log_file = f'output/{self.current_configuration}/' + log_path_suffix
+                    log_file = f'./output/{self.current_configuration}/' + log_path_suffix
                     # Initialize power multiplier
                     power_multiplier = 1
                     # Read the OpenROAD log file to extract power and area information
@@ -492,7 +492,7 @@ class DSE:
                     # Record the results in a CSV file
                     self.record_results(simulation_cycles, total_power, available_area)
                     # Path to the output folder
-                    output_folder = './output_llm'
+                    output_folder = './output'
                     # Command to delete files and folders of current configuration
                     command = f"find {output_folder} -name \
                         '*{self.current_configuration}*' -exec rm -rf {{}} +"
