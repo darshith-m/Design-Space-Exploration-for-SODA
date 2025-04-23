@@ -1,3 +1,5 @@
 # Ignore specific folders
 /output/
+/output_llm/
 /src/__pycache__/
+/llm/__pycache__/
